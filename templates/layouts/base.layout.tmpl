@@ -1,0 +1,15 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html class='{{block "base-html-class" .}}{{end}}' data-bs-theme='{{block "base-html-theme" .}}light{{end}}'>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{block "base-title" .}}ResuME{{end}}</title>
+    {{block "base-stylesheet" .}}{{end}}
+  </head>
+  <body>
+    {{template "base-body" .}}
+    {{block "base-script" .}}{{end}}
+  </body>
+</html>
+{{end}}

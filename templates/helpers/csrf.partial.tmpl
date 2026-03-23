@@ -1,0 +1,14 @@
+{{define "csrf"}}
+{{with .CSRF}}
+<script>
+	document.body.addEventListener('htmx:configRequest', function (event) {
+		const safe = ['get', 'options', 'trace'];
+		if (safe.includes(event.detail.verb)) {
+			return;
+		}
+
+		event.detail.headers['X-CSRF-Token'] = '{{.}}';
+	});
+</script>
+{{end}}
+{{end}}

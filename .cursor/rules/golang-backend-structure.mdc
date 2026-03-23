@@ -1,0 +1,78 @@
+---
+description: Go backend layout (cobra, pkg, RPC/repo) and dependency direction
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go backend (Cursor backend)
+
+## Layout
+
+- **`main.go`** — Only boot the CLI: call public `Execute()` from `cmd` (no business logic).
+- **`cmd/`** — Cobra: one file per command; thin wiring (flags → `pkg`).
+- **`cmd/root.go`** — Root command: global setup before any subcommand (config, logging, viper/env, persistent pre-run).
+- **`pkg/`** — All logic and domain packages.
+
+## RPC-oriented package files
+
+Per bounded area, prefer: **`rpc.go`** (RPC-facing interface), **`service.go`** (implements RPC), **`repo.go`** (repository interface), **`sql.go`** (concrete repo), **`nop.go`** (identity decorator). Use domain-named dirs when you have several services; keep the same split.
+
+### RPC method shape
+
+Every method on the RPC-facing interface must use **context**, a **single input struct**, a **single output struct**, and **`error`**:
+
+```go
+type Service interface {
+	SomeMethod(context.Context, SomeMethodInput) (SomeMethodOutput, error)
+}
+```
+
+Name input/output types after the method (`FooInput` / `FooOutput`). Do not use bare primitives or many positional parameters on the RPC surface.
+
+### `nop.go` — `NopService`
+
+Every RPC package must expose a **`NopService`** in **`nop.go`**: a pass-through wrapper with a **`Next Service`** field so other decorators can embed or compose it. One method per RPC method, delegating to `Next`:
+
+```go
+type NopService struct {
+	Next Service
+}
+
+func (svc NopService) SomeMethod(ctx context.Context, input SomeMethodInput) (SomeMethodOutput, error) {
+	return svc.Next.SomeMethod(ctx, input)
+}
+```
+
+Use this as the base when adding logging, metrics, auth, etc., without re-listing every method from scratch.
+
+## Accept interfaces, return structs
+
+- **Parameters:** depend on **small interfaces** (repos, clocks, etc.) for testability and swapping implementations.
+- **Returns:** prefer **concrete structs** from code you own (constructors, internal factories).
+
+```go
+func NewService(r TokenRepository) *Service { ... }
+
+type TokenRepository interface {
+    Save(ctx context.Context, t Token) error
+}
+```
+
+Avoid returning a broad interface from `New*` unless you truly need that at a stable public API boundary.
+
+## Compile-time interface checks
+
+Whenever a concrete type implements an interface, add a **blank assignment** next to that type (same file as the implementation) so drift breaks the build:
+
+```go
+var _ Service = (*authzService)(nil)
+```
+
+Use **`(*T)(nil)`** for **pointer-receiver** implementations. For **value-receiver** types, use **`var _ Service = NopService{}`** (or the zero value of `T`).
+
+## Checklist
+
+- [ ] `main.go` → `Execute()` only; startup in `cmd/root.go`.
+- [ ] RPC area: `rpc` / `service` / `repo` / `sql` / `nop` (`NopService` → `Next`); RPC methods `(ctx, XxxInput) (XxxOutput, error)`.
+- [ ] **Take interfaces, return structs** at service/repo and similar injection points.
+- [ ] `var _ Interface = (*Concrete)(nil)` (or `Concrete{}` for value receivers) for each interface implementation.
